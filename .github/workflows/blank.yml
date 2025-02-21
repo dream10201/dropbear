@@ -30,12 +30,9 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          # 安装基本工具和 zlib
-          sudo apt-get install -y build-essential git zlib1g-dev autoconf automake libtool
-          # 为 i686 添加 32 位支持
-          sudo apt-get install -y gcc-multilib
-          # 安装 ARM 交叉编译工具链
           sudo apt-get install -y \
+            build-essential git zlib1g-dev autoconf automake libtool \
+            gcc-multilib \
             gcc-arm-linux-gnueabihf \
             gcc-aarch64-linux-gnu \
             binutils-arm-linux-gnueabihf \
@@ -54,8 +51,8 @@ jobs:
         run: |
           autoreconf -i
           CC=${{ matrix.arch.cc }} \
-          CFLAGS="${{ matrix.arch.cflags }} -static" \
-          LDFLAGS="-static" \
+          CFLAGS="${{ matrix.arch.cflags }} -static -I/usr/include" \
+          LDFLAGS="-static -L/usr/lib/${{ matrix.arch.target }}" \
           ./configure \
             --host=${{ matrix.arch.target }} \
             --disable-shared \
