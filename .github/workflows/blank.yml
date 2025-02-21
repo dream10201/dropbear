@@ -11,15 +11,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 固定使用 Ubuntu 22.04，确保兼容性
+    runs-on: ubuntu-22.04  # 固定 Ubuntu 22.04，确保依赖兼容
 
     strategy:
       matrix:
         arch:
-          - { name: "x86_64", target: "x86_64-linux-gnu", cc: "gcc", cflags: "-m64", strip: "strip" }
-          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32 -march=i686", strip: "strip" }
-          - { name: "arm", target: "arm-linux-gnueabihf", cc: "arm-linux-gnueabihf-gcc", cflags: "", strip: "arm-linux-gnueabihf-strip" }
-          - { name: "aarch64", target: "aarch64-linux-gnu", cc: "aarch64-linux-gnu-gcc", cflags: "", strip: "aarch64-linux-gnu-strip" }
+          - { name: "x86_64", target: "x86_64-linux-gnu", cc: "gcc", cflags: "-m64", strip: "strip", zlib_path: "/usr/lib/x86_64-linux-gnu" }
+          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32 -march=i686", strip: "strip", zlib_path: "/usr/lib32" }
+          - { name: "arm", target: "arm-linux-gnueabihf", cc: "arm-linux-gnueabihf-gcc", cflags: "", strip: "arm-linux-gnueabihf-strip", zlib_path: "/usr/lib/arm-linux-gnueabihf" }
+          - { name: "aarch64", target: "aarch64-linux-gnu", cc: "aarch64-linux-gnu-gcc", cflags: "", strip: "aarch64-linux-gnu-strip", zlib_path: "/usr/lib/aarch64-linux-gnu" }
 
     steps:
       # 1. 检出代码
@@ -38,18 +38,21 @@ jobs:
             build-essential \
             git \
             zlib1g-dev \
+            lib32z1 \
             autoconf \
             automake \
-            libtool \
-            lib32z1  # 为 i686 提供 32 位 zlib 支持
-          # 安装交叉编译工具链（不安装 gcc-multilib，避免冲突）
+            libtool
+          # 安装交叉编译工具链
           sudo apt-get install -y \
             gcc-arm-linux-gnueabihf \
             gcc-aarch64-linux-gnu \
             binutils-arm-linux-gnueabihf \
             binutils-aarch64-linux-gnu
-          # 修复可能的依赖问题
-          sudo apt-get install -f
+          # 验证 zlib 静态库是否存在
+          ls -l /usr/lib/x86_64-linux-gnu/libz.a || echo "x86_64 zlib missing"
+          ls -l /usr/lib32/libz.a || echo "i686 zlib missing"
+          ls -l /usr/lib/arm-linux-gnueabihf/libz.a || echo "arm zlib missing"
+          ls -l /usr/lib/aarch64-linux-gnu/libz.a || echo "aarch64 zlib missing"
 
       # 3. 验证工具链安装
       - name: Verify Toolchains
@@ -72,7 +75,7 @@ jobs:
           autoreconf -i
           CC=${{ matrix.arch.cc }} \
           CFLAGS="${{ matrix.arch.cflags }} -static -I/usr/include" \
-          LDFLAGS="-static -L/usr/lib/${{ matrix.arch.target }}" \
+          LDFLAGS="-static -L${{ matrix.arch.zlib_path }} -lz" \
           ./configure \
             --host=${{ matrix.arch.target }} \
             --disable-shared \
