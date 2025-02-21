@@ -1,0 +1,79 @@
+name: Build Dropbear for Multiple Architectures
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        arch:
+          - { name: "x86_64", target: "x86_64-linux-gnu", cc: "gcc", cflags: "-m64" }
+          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32" }
+          - { name: "arm", target: "arm-linux-gnueabihf", cc: "arm-linux-gnueabihf-gcc", cflags: "" }
+          - { name: "aarch64", target: "aarch64-linux-gnu", cc: "aarch64-linux-gnu-gcc", cflags: "" }
+
+    steps:
+      # 1. 检出代码
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. 安装依赖和交叉编译工具链
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git zlib1g-dev \
+            gcc-${{ matrix.arch.target }} \
+            ${{ matrix.arch.cc }} \
+            autoconf automake libtool
+
+      # 3. 下载 Dropbear 源码
+      - name: Download Dropbear Source
+        run: |
+          git clone https://github.com/mkj/dropbear.git
+          cd dropbear
+          git checkout DROPBEAR_2022.83  # 使用最新稳定版本，可根据需要调整
+
+      # 4. 配置和静态编译 Dropbear
+      - name: Configure and Build Dropbear
+        working-directory: dropbear
+        run: |
+          autoreconf -i
+          CC=${{ matrix.arch.cc }} \
+          CFLAGS="${{ matrix.arch.cflags }} -static" \
+          LDFLAGS="-static" \
+          ./configure \
+            --host=${{ matrix.arch.target }} \
+            --disable-shared \
+            --enable-static \
+            --prefix=/usr/local(dropbear-${{ matrix.arch.name }}
+          make -j$(nproc) PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp"
+
+      # 5. 剥离符号表，减小文件体积
+      - name: Strip Binaries
+        working-directory: dropbear
+        run: |
+          ${{ matrix.arch.target }}-strip dropbear dbclient dropbearkey dropbearconvert scp
+
+      # 6. 创建输出目录并移动二进制文件
+      - name: Prepare Artifacts
+        working-directory: dropbear
+        run: |
+          mkdir -p ../artifacts/${{ matrix.arch.name }}
+          cp dropbear dbclient dropbearkey dropbearconvert scp ../artifacts/${{ matrix.arch.name }}/
+
+      # 7. 上传编译结果
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dropbear-${{ matrix.arch.name }}
+          path: artifacts/${{ matrix.arch.name }}/*
+          retention-days: 7
