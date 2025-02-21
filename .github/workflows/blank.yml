@@ -11,13 +11,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  # 固定使用 Ubuntu 22.04，避免版本问题
+    runs-on: ubuntu-22.04  # 固定使用 Ubuntu 22.04，确保兼容性
 
     strategy:
       matrix:
         arch:
           - { name: "x86_64", target: "x86_64-linux-gnu", cc: "gcc", cflags: "-m64", strip: "strip" }
-          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32", strip: "strip" }
+          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32 -march=i686", strip: "strip" }
           - { name: "arm", target: "arm-linux-gnueabihf", cc: "arm-linux-gnueabihf-gcc", cflags: "", strip: "arm-linux-gnueabihf-strip" }
           - { name: "aarch64", target: "aarch64-linux-gnu", cc: "aarch64-linux-gnu-gcc", cflags: "", strip: "aarch64-linux-gnu-strip" }
 
@@ -32,11 +32,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y software-properties-common
           sudo add-apt-repository universe
-          sudo add-apt-repository multiverse
           sudo apt-get update
+          # 安装基本工具和 zlib
           sudo apt-get install -y \
-            build-essential git zlib1g-dev autoconf automake libtool \
-            gcc-multilib \
+            build-essential \
+            git \
+            zlib1g-dev \
+            autoconf \
+            automake \
+            libtool \
+            lib32z1  # 为 i686 提供 32 位 zlib 支持
+          # 安装交叉编译工具链（不安装 gcc-multilib，避免冲突）
+          sudo apt-get install -y \
             gcc-arm-linux-gnueabihf \
             gcc-aarch64-linux-gnu \
             binutils-arm-linux-gnueabihf \
@@ -44,14 +51,21 @@ jobs:
           # 修复可能的依赖问题
           sudo apt-get install -f
 
-      # 3. 下载 Dropbear 源码
+      # 3. 验证工具链安装
+      - name: Verify Toolchains
+        run: |
+          gcc --version
+          arm-linux-gnueabihf-gcc --version || echo "ARM toolchain missing"
+          aarch64-linux-gnu-gcc --version || echo "AArch64 toolchain missing"
+
+      # 4. 下载 Dropbear 源码
       - name: Download Dropbear Source
         run: |
           git clone https://github.com/mkj/dropbear.git
           cd dropbear
           git checkout DROPBEAR_2022.83  # 可调整版本
 
-      # 4. 配置和静态编译 Dropbear
+      # 5. 配置和静态编译 Dropbear
       - name: Configure and Build Dropbear
         working-directory: dropbear
         run: |
@@ -66,20 +80,26 @@ jobs:
             --prefix=/usr/local/dropbear-${{ matrix.arch.name }}
           make -j$(nproc) PROGRAMS="dropbear dbclient dropbearkey dropbearconvert scp"
 
-      # 5. 剥离符号表
+      # 6. 剥离符号表
       - name: Strip Binaries
         working-directory: dropbear
         run: |
           ${{ matrix.arch.strip }} dropbear dbclient dropbearkey dropbearconvert scp
 
-      # 6. 准备输出文件
+      # 7. 验证静态链接
+      - name: Verify Static Linking
+        working-directory: dropbear
+        run: |
+          file dropbear | grep "statically linked" || echo "Static linking failed"
+
+      # 8. 准备输出文件
       - name: Prepare Artifacts
         working-directory: dropbear
         run: |
           mkdir -p ../artifacts/${{ matrix.arch.name }}
           cp dropbear dbclient dropbearkey dropbearconvert scp ../artifacts/${{ matrix.arch.name }}/
 
-      # 7. 上传编译结果
+      # 9. 上传编译结果
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
