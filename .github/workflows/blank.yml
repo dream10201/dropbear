@@ -16,10 +16,10 @@ jobs:
     strategy:
       matrix:
         arch:
-          - { name: "x86_64", target: "x86_64-linux-gnu", cc: "gcc", cflags: "-m64" }
-          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32" }
-          - { name: "arm", target: "arm-linux-gnueabihf", cc: "arm-linux-gnueabihf-gcc", cflags: "" }
-          - { name: "aarch64", target: "aarch64-linux-gnu", cc: "aarch64-linux-gnu-gcc", cflags: "" }
+          - { name: "x86_64", target: "x86_64-linux-gnu", cc: "gcc", cflags: "-m64", strip: "strip" }
+          - { name: "i686", target: "i686-linux-gnu", cc: "gcc", cflags: "-m32", strip: "strip" }
+          - { name: "arm", target: "arm-linux-gnueabihf", cc: "arm-linux-gnueabihf-gcc", cflags: "", strip: "arm-linux-gnueabihf-strip" }
+          - { name: "aarch64", target: "aarch64-linux-gnu", cc: "aarch64-linux-gnu-gcc", cflags: "", strip: "aarch64-linux-gnu-strip" }
 
     steps:
       # 1. 检出代码
@@ -30,14 +30,16 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
+          # 安装基本工具和 zlib
           sudo apt-get install -y build-essential git zlib1g-dev autoconf automake libtool
-          # 安装交叉编译工具链
+          # 为 i686 添加 32 位支持
+          sudo apt-get install -y gcc-multilib
+          # 安装 ARM 交叉编译工具链
           sudo apt-get install -y \
-            gcc-${{ matrix.arch.target }} \
-            gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabihf \
-            binutils-${{ matrix.arch.target }} \
-            lib32z1 lib32ncurses-dev  # 为 32 位支持添加依赖
+            gcc-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabihf \
+            binutils-aarch64-linux-gnu
 
       # 3. 下载 Dropbear 源码
       - name: Download Dropbear Source
@@ -65,7 +67,7 @@ jobs:
       - name: Strip Binaries
         working-directory: dropbear
         run: |
-          ${{ matrix.arch.target }}-strip dropbear dbclient dropbearkey dropbearconvert scp
+          ${{ matrix.arch.strip }} dropbear dbclient dropbearkey dropbearconvert scp
 
       # 6. 准备输出文件
       - name: Prepare Artifacts
